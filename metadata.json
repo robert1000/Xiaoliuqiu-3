@@ -1,5 +1,5 @@
 {
-  "name": "小琉球湛藍回憶生成器 - Xiao Liu Qiu AI Trip",
+  "name": "小琉球湛藍回憶生成器",
   "description": "上傳您的照片，由 AI 帶您與海龜共游、搭乘玻璃船、體驗海島落日，生成專屬的小琉球旅遊回憶。",
   "requestFramePermissions": [
     "camera"
