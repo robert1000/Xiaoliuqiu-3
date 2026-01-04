@@ -8,6 +8,7 @@ export const generateLiuqiuMemory = async (
   aspectRatio: string,
   style: string
 ): Promise<string> => {
+  // Always create a new instance to ensure the latest API Key is used
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
   const systemInstruction = `You are a professional travel photographer specializing in Liuqiu Island, Taiwan.
@@ -32,8 +33,9 @@ export const generateLiuqiuMemory = async (
   The aspect ratio should be ${aspectRatio}.`;
 
   try {
+    // Upgraded to Gemini 3 Pro Image Preview for better quality
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3-pro-image-preview',
       contents: {
         parts: [
           {
@@ -51,6 +53,7 @@ export const generateLiuqiuMemory = async (
         systemInstruction: systemInstruction,
         imageConfig: {
           aspectRatio: aspectRatio as any,
+          imageSize: '1K', // Explicitly set size for Pro model
         }
       },
     });
@@ -67,6 +70,7 @@ export const generateLiuqiuMemory = async (
     throw new Error('模型未返回圖片數據。');
   } catch (error: any) {
     console.error('Gemini API Error:', error);
-    throw new Error(error.message || '生成失敗，請稍後再試。');
+    // Propagate the specific error message to be handled by the UI
+    throw error;
   }
 };

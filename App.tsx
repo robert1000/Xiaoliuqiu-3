@@ -1,8 +1,14 @@
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AspectRatio, StylePreset, GenerationState } from './types';
 import { SCENE_OPTIONS } from './constants';
 import { generateLiuqiuMemory } from './services/geminiService';
+
+// Define the window.aistudio interface locally to avoid global type conflicts
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
 
 const App: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<{ base64: string; mimeType: string } | null>(null);
@@ -11,6 +17,7 @@ const App: React.FC = () => {
   const [customPrompt, setCustomPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(AspectRatio.PORTRAIT_IG);
   const [stylePreset, setStylePreset] = useState<StylePreset>(StylePreset.NATURAL);
+  const [hasApiKey, setHasApiKey] = useState(false);
   const [generation, setGeneration] = useState<GenerationState>({
     loading: false,
     error: null,
@@ -18,6 +25,22 @@ const App: React.FC = () => {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check for API Key on mount
+  useEffect(() => {
+    const aiStudio = (window as any).aistudio as AIStudio | undefined;
+    if (aiStudio) {
+      aiStudio.hasSelectedApiKey().then(setHasApiKey);
+    }
+  }, []);
+
+  const handleApiKeySelect = async () => {
+    const aiStudio = (window as any).aistudio as AIStudio | undefined;
+    if (aiStudio) {
+      await aiStudio.openSelectKey();
+      setHasApiKey(true);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,6 +62,15 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
+    // 1. Ensure API Key is selected
+    const aiStudio = (window as any).aistudio as AIStudio | undefined;
+    if (!hasApiKey && aiStudio) {
+      await aiStudio.openSelectKey();
+      setHasApiKey(true);
+      // Proceed immediately as per race condition handling instructions
+    }
+
+    // 2. Ensure Image is selected
     if (!selectedImage) {
       setGeneration(prev => ({ ...prev, error: '請先上傳照片' }));
       return;
@@ -57,7 +89,20 @@ const App: React.FC = () => {
       );
       setGeneration({ loading: false, error: null, resultUrl: result });
     } catch (err: any) {
-      setGeneration({ loading: false, error: err.message, resultUrl: null });
+      // Handle "Requested entity was not found" specifically
+      if (err.message && err.message.includes('Requested entity was not found')) {
+        setHasApiKey(false);
+        setGeneration({ loading: false, error: null, resultUrl: null }); // Clear error for UX
+        if (aiStudio) {
+           await aiStudio.openSelectKey();
+           setHasApiKey(true);
+           setGeneration(prev => ({ ...prev, error: 'API Key 已更新，請再次點擊生成按鈕。' }));
+        } else {
+           setGeneration(prev => ({ ...prev, error: 'API Key 無效且無法重設，請重新整理頁面。' }));
+        }
+      } else {
+        setGeneration({ loading: false, error: err.message || '生成失敗，請稍後再試。', resultUrl: null });
+      }
     }
   };
 
@@ -95,8 +140,23 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen p-4 sm:p-8 flex items-start justify-center">
-      <div className="w-full max-w-5xl bg-white/95 backdrop-blur-md rounded-2xl p-6 sm:p-10 my-4 shadow-[0_20px_60px_rgba(0,139,139,0.15)] border border-white/50">
+      <div className="w-full max-w-5xl bg-white/95 backdrop-blur-md rounded-2xl p-6 sm:p-10 my-4 shadow-[0_20px_60px_rgba(0,139,139,0.15)] border border-white/50 relative">
         
+        {/* API Key Button (Top Right) */}
+        <div className="absolute top-4 right-4 z-50">
+           <button 
+             onClick={handleApiKeySelect}
+             className={`flex items-center text-xs font-medium px-3 py-1.5 rounded-full transition-colors border ${
+               hasApiKey 
+                 ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
+                 : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 animate-pulse'
+             }`}
+           >
+             <span className="mr-1">{hasApiKey ? '🔑' : '⚠️'}</span>
+             {hasApiKey ? 'API Key 已設定' : '設定 API Key'}
+           </button>
+        </div>
+
         {/* Header */}
         <header className="text-center mb-10">
           <div className="text-cyan-600 font-bold text-lg sm:text-xl tracking-widest mb-2">形世代 X 浪琉研</div>
@@ -237,13 +297,15 @@ const App: React.FC = () => {
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                 </>
               ) : (
-                <span>✨ 出發去小琉球</span>
+                <span>
+                   {!hasApiKey ? '🔑 設定 Key 並出發' : '✨ 出發去小琉球'}
+                </span>
               )}
             </button>
             
             {generation.error && (
               <p className="text-red-500 text-sm text-center p-3 bg-red-50 rounded-lg border border-red-100 whitespace-pre-wrap">
-                哎呀！海浪太大連線不穩：{generation.error}
+                {generation.error}
               </p>
             )}
           </div>
